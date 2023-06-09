@@ -69,6 +69,7 @@ from os import remove
 
 import numpy as np  # for arrays, array broadcasting etc.
 from scipy.special import gammaln  # gamma function utils
+from torch import cdist
 
 from gensim import utils
 from gensim.models import LdaModel
