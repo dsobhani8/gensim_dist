@@ -1046,7 +1046,7 @@ class AuthorTopicModel(LdaModel):
 
         mmd_penalty = self.compute_mmd(gamma)
 
-        total_score = word_score + theta_score + beta_score + mmd_penalty
+        total_score = word_score + theta_score + beta_score - mmd_penalty
 
 
         return total_score
