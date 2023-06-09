@@ -69,7 +69,6 @@ from os import remove
 
 import numpy as np  # for arrays, array broadcasting etc.
 from scipy.special import gammaln  # gamma function utils
-from torch import cdist
 
 from gensim import utils
 from gensim.models import LdaModel
@@ -904,6 +903,24 @@ class AuthorTopicModel(LdaModel):
                 self.do_mstep(rho(), other, pass_ > 0)
                 del other
 
+    def compute_mmd(self, gamma):
+        # Kernel function.
+        def kernel(x, y):
+            return np.exp(-np.linalg.norm(x - y) ** 2 / (2 * (1.0 ** 2)))
+
+        n_authors = gamma.shape[0]
+        mmd_values = []
+
+        # Calculate pairwise MMD.
+        for i in range(n_authors):
+            for j in range(i + 1, n_authors):
+                mmd_values.append(kernel(gamma[i], gamma[j]))
+
+        # Average the MMD values.
+        mmd_penalty = np.mean(mmd_values)
+
+        return mmd_penalty
+
     def bound(self, chunk, chunk_doc_idx=None, subsample_ratio=1.0, author2doc=None, doc2author=None):
         r"""Estimate the variational bound of documents from `corpus`.
 
@@ -952,23 +969,10 @@ class AuthorTopicModel(LdaModel):
 
         gamma = self.state.gamma
 
-
-        # MMD penalty
-        mmd_penalty = 0.0
-        if author2doc is not None and doc2author is not None:
-            author_dist = np.zeros((self.num_authors, self.num_topics))
-            for author, doc_ids in author2doc.items():
-                author_id = self.author2id[author]
-                author_topics = self.state.gamma[author_id, :]
-                author_dist[author_id, :] = author_topics / np.sum(author_topics)
-
-            # Calculate the mean author distribution
-            mean_author_dist = np.mean(author_dist, axis=0)
-
-            # Calculate the MMD penalty using the Gaussian kernel
-            gamma = 1.0 / (2 * (self.sigma ** 2))
-            pairwise_distances = cdist(author_dist, mean_author_dist.reshape(1, -1), 'sqeuclidean')
-            mmd_penalty = np.sum(np.exp(-gamma * pairwise_distances))
+        if author2doc is None and doc2author is None:
+            # Evaluating on training documents (chunk of self.corpus).
+            author2doc = self.author2doc
+            doc2author = self.doc2author
 
             if not chunk_doc_idx:
                 # If author2doc and doc2author are not provided, chunk is assumed to be a subset of
@@ -1040,9 +1044,10 @@ class AuthorTopicModel(LdaModel):
         sum_eta = np.sum(self.eta)
         beta_score += np.sum(gammaln(sum_eta) - gammaln(np.sum(_lambda, 1)))
 
+        mmd_penalty = self.compute_mmd(gamma)
+
         total_score = word_score + theta_score + beta_score + mmd_penalty
 
-        print(mmd_penalty)
 
         return total_score
 
